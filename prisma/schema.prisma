@@ -7,10 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- NextAuth models ---
-// Standard next-auth Prisma adapter shape. Account holds the Google refresh
-// token that gmail.ts uses to mint short-lived access tokens on demand.
+// --- Platform aggregators (paperloft, cursor-marketplace, etc.) ---
+model Platform {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  sharedSecretHash  String   @unique
+  createdAt         DateTime @default(now())
 
+  pool              PlatformPool?
+  users             User[]
+}
+
+model PlatformPool {
+  platformId  String   @id
+  balance     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  platform    Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+}
+
+// --- NextAuth + platform-provisioned users ---
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -19,10 +36,21 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
 
+  // Prepaid credits. 1 credit = 1 email sent. Reads are free.
+  creditBalance Int       @default(100)
+
+  // Platform provisioning
+  platformId    String?
+  platformRef   String?
+  platform      Platform? @relation(fields: [platformId], references: [id], onDelete: SetNull)
+
   accounts     Account[]
   sessions     Session[]
   apiKeys      ApiKey[]
   telegram     TelegramLink?
+  transactions CreditTransaction[]
+
+  @@unique([platformId, platformRef], name: "platformId_platformRef")
 }
 
 model Account {
@@ -60,10 +88,6 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// --- MCP API keys ---
-// Same pattern as video-render-mcp. Raw key format: `em_live_<48 hex>`.
-// Only the SHA-256 hash is stored — raw shown to user exactly once.
-
 model ApiKey {
   id         String    @id @default(cuid())
   userId     String
@@ -78,13 +102,6 @@ model ApiKey {
   @@index([userId])
 }
 
-// --- Telegram link ---
-// One row per user who's plugged in a bot. `botToken` is the user's own bot
-// token from @BotFather. `webhookSecret` is a random per-user segment we
-// route their webhook URL through so a leaked bot token can't be sent to us
-// via someone else's URL. `chatId` gets filled the first time the user
-// messages the bot; before that it's null.
-
 model TelegramLink {
   id            String   @id @default(cuid())
   userId        String   @unique
@@ -98,4 +115,17 @@ model TelegramLink {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([chatId])
+}
+
+model CreditTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  delta     Int      // + for credits added, - for consumed
+  reason    String   // 'trial' | 'platform_grant' | 'email_send' | 'refund'
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

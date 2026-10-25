@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
+      POSTGRES_PASSWORD: 2435dfd11e78c9cddd2a63146d51e699169b1ec9975e2c75
       POSTGRES_DB: email_mcp
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -13,6 +13,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - paperloft
 
   web:
     build:
@@ -21,12 +23,19 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://admin:admin@db:5432/email_mcp
+      DATABASE_URL: postgresql://admin:2435dfd11e78c9cddd2a63146d51e699169b1ec9975e2c75@db:5432/email_mcp
     ports:
       - "3011:3000"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - paperloft
 
 volumes:
   pgdata:
+
+networks:
+  paperloft:
+    external: true
+    name: paperloft-assist_default
